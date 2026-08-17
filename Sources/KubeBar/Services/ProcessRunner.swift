@@ -15,12 +15,28 @@ enum ProcessRunnerError: LocalizedError {
 }
 
 enum ProcessRunner {
+    /// GUI apps launched via Finder or a login item get PATH from launchd,
+    /// which is typically just "/usr/bin:/bin:/usr/sbin:/sbin" — missing
+    /// Homebrew and /usr/local/bin even though a login shell's PATH (what
+    /// the user sees in Terminal) includes them. Always check these too,
+    /// on top of whatever PATH the process actually has.
+    private static let fallbackSearchDirs = [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin"
+    ]
+
     static func findExecutable(_ name: String) -> String? {
         if name.hasPrefix("/") {
             return FileManager.default.isExecutableFile(atPath: name) ? name : nil
         }
-        let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/local/bin"
-        for dir in path.split(separator: ":") {
+        let pathDirs = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+        for dir in pathDirs + fallbackSearchDirs {
             let candidate = "\(dir)/\(name)"
             if FileManager.default.isExecutableFile(atPath: candidate) {
                 return candidate

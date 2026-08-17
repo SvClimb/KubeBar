@@ -27,6 +27,17 @@ struct MenuBarContentView: View {
         selectedUtilityObject?.commandTemplate.contains("{app}") ?? false
     }
 
+    /// Manually added (unscoped) apps are always shown; auto-discovered
+    /// ones only when they match the currently selected context+namespace.
+    private var availableApps: [NamedEntry] {
+        configStore.savedApps.filter { entry in
+            guard let entryContext = entry.contextName, let entryNamespace = entry.namespaceName else {
+                return true
+            }
+            return entryContext == selectedContext && entryNamespace == selectedNamespace
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("KubeBar").font(.headline)
@@ -81,7 +92,7 @@ struct MenuBarContentView: View {
                 HStack {
                     Picker("App", selection: $selectedApp) {
                         Text("—").tag(String?.none)
-                        ForEach(configStore.savedApps) { entry in
+                        ForEach(availableApps) { entry in
                             Text(entry.name).tag(String?.some(entry.name))
                         }
                     }
@@ -215,7 +226,7 @@ struct MenuBarContentView: View {
             do {
                 let names = try KubeQueryService.fetchApps(context: context, namespace: namespace, kubectlExecutable: kubectlPath)
                 DispatchQueue.main.async {
-                    for name in names { self.configStore.addApp(name) }
+                    self.configStore.syncApps(names, contextName: context, namespaceName: namespace)
                     self.isRefreshingApps = false
                 }
             } catch {

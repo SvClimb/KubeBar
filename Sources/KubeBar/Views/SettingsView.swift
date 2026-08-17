@@ -148,6 +148,11 @@ struct SettingsView: View {
                 ForEach(configStore.savedApps) { entry in
                     HStack {
                         Text(entry.name)
+                        if let contextName = entry.contextName, let namespaceName = entry.namespaceName {
+                            Text("· \(contextName)/\(namespaceName)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
                         deleteButton {
                             configStore.savedApps.removeAll { $0.id == entry.id }

@@ -184,6 +184,18 @@ final class ConfigStore: ObservableObject {
         save()
     }
 
+    /// Replaces the auto-discovered apps for one context+namespace with a
+    /// freshly fetched list, instead of appending to it — otherwise apps
+    /// from every namespace ever browsed pile up in the same picker.
+    /// Manually added (unscoped) apps are left untouched.
+    func syncApps(_ names: [String], contextName: String, namespaceName: String) {
+        savedApps.removeAll { $0.contextName == contextName && $0.namespaceName == namespaceName }
+        for name in names {
+            savedApps.append(NamedEntry(name: name, contextName: contextName, namespaceName: namespaceName))
+        }
+        save()
+    }
+
     func addHistoryEntry(_ entry: HistoryEntry) {
         history.insert(entry, at: 0)
         if history.count > ConfigStore.maxHistoryEntries {
