@@ -3,8 +3,19 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var configStore: ConfigStore
 
-    @State private var newUtilityName = ""
-    @State private var newUtilityExecutable = ""
+    private enum UtilitySheet: Identifiable {
+        case add
+        case edit(index: Int)
+
+        var id: String {
+            switch self {
+            case .add: return "add"
+            case .edit(let index): return "edit-\(index)"
+            }
+        }
+    }
+
+    @State private var utilitySheet: UtilitySheet?
     @State private var newNamespace = ""
     @State private var newApp = ""
     @State private var newTerminalName = ""
@@ -70,47 +81,57 @@ struct SettingsView: View {
             .font(.caption)
 
             List {
-                ForEach($configStore.utilities) { $utility in
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                TextField("Имя", text: $utility.name)
-                                    .frame(width: 100)
-                                TextField("Исполняемый файл/путь", text: $utility.executable)
-                            }
-                            TextField("Шаблон команды", text: $utility.commandTemplate)
-                                .font(.system(.body, design: .monospaced))
-                        }
-                        deleteButton {
-                            configStore.utilities.removeAll { $0.id == utility.id }
+                ForEach(Array(configStore.utilities.enumerated()), id: \.element.id) { index, utility in
+                    UtilityRow(
+                        utility: utility,
+                        canMoveUp: index > 0,
+                        canMoveDown: index < configStore.utilities.count - 1,
+                        onMoveUp: { moveUtility(from: index, to: index - 1) },
+                        onMoveDown: { moveUtility(from: index, to: index + 1) },
+                        onEdit: { utilitySheet = .edit(index: index) },
+                        onDelete: {
+                            configStore.utilities.remove(at: index)
                             configStore.save()
                         }
-                    }
-                    .padding(.vertical, 2)
+                    )
                 }
             }
-            .onChange(of: configStore.utilities) { _, _ in
-                configStore.save()
-            }
 
-            HStack {
-                TextField("Имя", text: $newUtilityName)
-                TextField("Исполняемый файл/путь", text: $newUtilityExecutable)
-                Button("Добавить") {
-                    guard !newUtilityName.isEmpty, !newUtilityExecutable.isEmpty else { return }
-                    configStore.utilities.append(
-                        Utility(
-                            name: newUtilityName,
-                            executable: newUtilityExecutable,
-                            commandTemplate: "{executable} --context {context} -n {namespace} {app}"
-                        )
-                    )
+            Button("Добавить утилиту") {
+                utilitySheet = .add
+            }
+        }
+        .sheet(item: $utilitySheet) { sheet in
+            switch sheet {
+            case .add:
+                UtilityEditorView(
+                    utility: Utility(name: "", executable: "", commandTemplate: "{executable} --context {context} -n {namespace} {app}"),
+                    isNew: true,
+                    existingNames: Set(configStore.utilities.map(\.name))
+                ) { newUtility in
+                    configStore.utilities.append(newUtility)
                     configStore.save()
-                    newUtilityName = ""
-                    newUtilityExecutable = ""
+                }
+            case .edit(let index):
+                if configStore.utilities.indices.contains(index) {
+                    let otherNames = Set(
+                        configStore.utilities.enumerated()
+                            .filter { $0.offset != index }
+                            .map { $0.element.name }
+                    )
+                    UtilityEditorView(utility: configStore.utilities[index], isNew: false, existingNames: otherNames) { updated in
+                        configStore.utilities[index] = updated
+                        configStore.save()
+                    }
                 }
             }
         }
+    }
+
+    private func moveUtility(from: Int, to: Int) {
+        guard configStore.utilities.indices.contains(from), configStore.utilities.indices.contains(to) else { return }
+        configStore.utilities.swapAt(from, to)
+        configStore.save()
     }
 
     // MARK: - Namespaces
@@ -292,5 +313,71 @@ struct SettingsView: View {
                 }
             Spacer()
         }
+    }
+}
+
+/// Read-only summary row for one utility template: name and executable are
+/// each explicitly labeled so they stay distinguishable even when they
+/// happen to be the same word (e.g. a utility named "kubectl" that also
+/// runs the "kubectl" executable). Editing happens in `UtilityEditorView`.
+private struct UtilityRow: View {
+    let utility: Utility
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(spacing: 2) {
+                Button(action: onMoveUp) {
+                    Image(systemName: "chevron.up")
+                }
+                .disabled(!canMoveUp)
+                Button(action: onMoveDown) {
+                    Image(systemName: "chevron.down")
+                }
+                .disabled(!canMoveDown)
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .help("Изменить порядок")
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 4) {
+                    Text("Имя:").font(.caption).foregroundStyle(.secondary)
+                    Text(utility.name).font(.headline)
+                }
+                HStack(spacing: 4) {
+                    Text("Утилита:").font(.caption).foregroundStyle(.secondary)
+                    Text(utility.executable)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Text(utility.commandTemplate)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            Spacer()
+
+            Button(action: onEdit) {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(.borderless)
+            .help("Редактировать")
+
+            Button(action: onDelete) {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("Удалить")
+        }
+        .padding(.vertical, 4)
     }
 }

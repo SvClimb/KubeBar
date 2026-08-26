@@ -1,6 +1,13 @@
 import SwiftUI
 import AppKit
 
+private enum DropdownField {
+    case utility
+    case context
+    case namespace
+    case app
+}
+
 struct MenuBarContentView: View {
     @EnvironmentObject var configStore: ConfigStore
 
@@ -15,6 +22,10 @@ struct MenuBarContentView: View {
     @State private var isRefreshingApps = false
     @State private var errorMessage: String?
 
+    /// Which dropdown (if any) is currently expanded. Only one may be
+    /// open at a time so their overlaid lists never collide.
+    @State private var openDropdown: DropdownField?
+
     /// Suppresses the context/namespace onChange reset logic while we
     /// programmatically restore the last-used selection on appear.
     @State private var isRestoringSelection = false
@@ -25,6 +36,16 @@ struct MenuBarContentView: View {
 
     private var utilityNeedsApp: Bool {
         selectedUtilityObject?.commandTemplate.contains("{app}") ?? false
+    }
+
+    private var commandPreview: String? {
+        let selection = LaunchSelection(
+            utilityName: selectedUtility,
+            contextName: selectedContext,
+            namespaceName: selectedNamespace,
+            appName: selectedApp
+        )
+        return TerminalLauncher.previewCommand(selection: selection, utilities: configStore.utilities)
     }
 
     /// Manually added (unscoped) apps are always shown; auto-discovered
@@ -42,20 +63,23 @@ struct MenuBarContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("KubeBar").font(.headline)
 
-            Picker("Утилита", selection: $selectedUtility) {
-                Text("—").tag(String?.none)
-                ForEach(configStore.utilities) { utility in
-                    Text(utility.name).tag(String?.some(utility.name))
-                }
-            }
+            FilterableDropdown(
+                title: "Утилита",
+                items: configStore.utilities.map(\.name),
+                selection: $selectedUtility,
+                isOpen: openBinding(for: .utility),
+                placement: .below
+            )
+            .zIndex(openDropdown == .utility ? 10 : 0)
 
             HStack {
-                Picker("Контекст", selection: $selectedContext) {
-                    Text("—").tag(String?.none)
-                    ForEach(contexts) { context in
-                        Text(context.name).tag(String?.some(context.name))
-                    }
-                }
+                FilterableDropdown(
+                    title: "Контекст",
+                    items: contexts.map(\.name),
+                    selection: $selectedContext,
+                    isOpen: openBinding(for: .context),
+                    placement: .below
+                )
                 if isLoadingContexts {
                     ProgressView().controlSize(.small)
                 } else {
@@ -67,14 +91,16 @@ struct MenuBarContentView: View {
                     .buttonStyle(.borderless)
                 }
             }
+            .zIndex(openDropdown == .context ? 10 : 0)
 
             HStack {
-                Picker("Namespace", selection: $selectedNamespace) {
-                    Text("—").tag(String?.none)
-                    ForEach(configStore.savedNamespaces) { entry in
-                        Text(entry.name).tag(String?.some(entry.name))
-                    }
-                }
+                FilterableDropdown(
+                    title: "Namespace",
+                    items: configStore.savedNamespaces.map(\.name),
+                    selection: $selectedNamespace,
+                    isOpen: openBinding(for: .namespace),
+                    placement: .above
+                )
                 Button {
                     refreshNamespaces()
                 } label: {
@@ -87,15 +113,17 @@ struct MenuBarContentView: View {
                 .disabled(selectedContext == nil || isRefreshingNamespaces)
                 .buttonStyle(.borderless)
             }
+            .zIndex(openDropdown == .namespace ? 10 : 0)
 
             if utilityNeedsApp {
                 HStack {
-                    Picker("App", selection: $selectedApp) {
-                        Text("—").tag(String?.none)
-                        ForEach(availableApps) { entry in
-                            Text(entry.name).tag(String?.some(entry.name))
-                        }
-                    }
+                    FilterableDropdown(
+                        title: "App",
+                        items: availableApps.map(\.name),
+                        selection: $selectedApp,
+                        isOpen: openBinding(for: .app),
+                        placement: .above
+                    )
                     Button {
                         refreshApps()
                     } label: {
@@ -107,6 +135,22 @@ struct MenuBarContentView: View {
                     }
                     .disabled(selectedContext == nil || selectedNamespace == nil || isRefreshingApps)
                     .buttonStyle(.borderless)
+                }
+                .zIndex(openDropdown == .app ? 10 : 0)
+            }
+
+            if let commandPreview {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Предпросмотр")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(commandPreview)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor)))
                 }
             }
 
@@ -147,19 +191,61 @@ struct MenuBarContentView: View {
         }
         .padding(16)
         .frame(width: 340)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            openDropdown = nil
+        }
         .onAppear {
             restoreLastSelection()
             loadContexts()
+        }
+        .onChange(of: selectedUtility) { _, _ in
+            guard !isRestoringSelection else { return }
+            persistSelection()
         }
         .onChange(of: selectedContext) { _, _ in
             guard !isRestoringSelection else { return }
             selectedNamespace = nil
             selectedApp = nil
+            persistSelection()
         }
         .onChange(of: selectedNamespace) { _, _ in
             guard !isRestoringSelection else { return }
             selectedApp = nil
+            persistSelection()
         }
+        .onChange(of: selectedApp) { _, _ in
+            guard !isRestoringSelection else { return }
+            persistSelection()
+        }
+    }
+
+    /// Persists the current picks as `lastSelection` immediately, not just
+    /// after a Launch/Подготовить — otherwise closing the popover without
+    /// running a command loses whatever the user had already chosen, since
+    /// the view's @State is torn down and next time it can only restore
+    /// from `configStore.lastSelection`.
+    private func persistSelection() {
+        configStore.lastSelection = LaunchSelection(
+            utilityName: selectedUtility,
+            contextName: selectedContext,
+            namespaceName: selectedNamespace,
+            appName: selectedApp
+        )
+        configStore.save()
+    }
+
+    private func openBinding(for field: DropdownField) -> Binding<Bool> {
+        Binding(
+            get: { openDropdown == field },
+            set: { isOpen in
+                if isOpen {
+                    openDropdown = field
+                } else if openDropdown == field {
+                    openDropdown = nil
+                }
+            }
+        )
     }
 
     private func restoreLastSelection() {
