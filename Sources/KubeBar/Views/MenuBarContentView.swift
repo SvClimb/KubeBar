@@ -30,6 +30,12 @@ struct MenuBarContentView: View {
     /// programmatically restore the last-used selection on appear.
     @State private var isRestoringSelection = false
 
+    /// One-off edit of the previewed command (e.g. `--tail 10` instead of
+    /// the template's `--tail 100`). `nil` means "follow the template".
+    /// Never written back to the utility; dropped whenever the selection
+    /// changes so a stale edit can't leak into a different command.
+    @State private var editedCommand: String?
+
     private var selectedUtilityObject: Utility? {
         configStore.utilities.first { $0.name == selectedUtility }
     }
@@ -46,6 +52,15 @@ struct MenuBarContentView: View {
             appName: selectedApp
         )
         return TerminalLauncher.previewCommand(selection: selection, utilities: configStore.utilities)
+    }
+
+    private var commandPreviewBinding: Binding<String> {
+        Binding(
+            get: { editedCommand ?? commandPreview ?? "" },
+            set: { newValue in
+                editedCommand = newValue == commandPreview ? nil : newValue
+            }
+        )
     }
 
     /// Manually added (unscoped) apps are always shown; auto-discovered
@@ -139,18 +154,35 @@ struct MenuBarContentView: View {
                 .zIndex(openDropdown == .app ? 10 : 0)
             }
 
-            if let commandPreview {
+            if commandPreview != nil {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Предпросмотр")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(commandPreview)
+                    HStack {
+                        Text(editedCommand == nil ? "Предпросмотр" : "Предпросмотр (изменено)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if editedCommand != nil {
+                            Button("Сбросить") {
+                                editedCommand = nil
+                            }
+                            .font(.caption)
+                            .buttonStyle(.borderless)
+                            .help("Вернуть команду из шаблона утилиты")
+                        }
+                    }
+                    TextField("", text: commandPreviewBinding, axis: .vertical)
+                        .textFieldStyle(.plain)
                         .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
+                        .lineLimit(1...12)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                         .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor)))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(Color.accentColor.opacity(editedCommand == nil ? 0 : 0.6))
+                        )
+                        .help("Можно отредактировать команду для этого запуска — шаблон утилиты не изменится")
                 }
             }
 
@@ -200,21 +232,25 @@ struct MenuBarContentView: View {
             loadContexts()
         }
         .onChange(of: selectedUtility) { _, _ in
+            editedCommand = nil
             guard !isRestoringSelection else { return }
             persistSelection()
         }
         .onChange(of: selectedContext) { _, _ in
+            editedCommand = nil
             guard !isRestoringSelection else { return }
             selectedNamespace = nil
             selectedApp = nil
             persistSelection()
         }
         .onChange(of: selectedNamespace) { _, _ in
+            editedCommand = nil
             guard !isRestoringSelection else { return }
             selectedApp = nil
             persistSelection()
         }
         .onChange(of: selectedApp) { _, _ in
+            editedCommand = nil
             guard !isRestoringSelection else { return }
             persistSelection()
         }
@@ -340,7 +376,17 @@ struct MenuBarContentView: View {
             return
         }
         do {
-            let (utility, commandString) = try TerminalLauncher.buildCommand(selection: selection, utilities: configStore.utilities)
+            // buildCommand still runs on an edited command: it validates
+            // the selection (which history records) and resolves the utility.
+            var (utility, commandString) = try TerminalLauncher.buildCommand(selection: selection, utilities: configStore.utilities)
+            if let editedCommand {
+                let trimmed = editedCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else {
+                    errorMessage = "Команда пустая."
+                    return
+                }
+                commandString = trimmed
+            }
             try TerminalLauncher.launch(commandString: commandString, terminalProfile: profile, mode: mode)
             configStore.lastSelection = selection
             configStore.addHistoryEntry(HistoryEntry(
