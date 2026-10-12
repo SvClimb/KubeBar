@@ -58,9 +58,29 @@ struct MenuBarContentView: View {
         Binding(
             get: { editedCommand ?? commandPreview ?? "" },
             set: { newValue in
-                editedCommand = newValue == commandPreview ? nil : newValue
+                let normalized = Self.normalizeEditedCommand(newValue)
+                editedCommand = normalized == commandPreview ? nil : normalized
             }
         )
+    }
+
+    /// Keeps a hand-edited command a single line of plain shell text: undoes
+    /// macOS smart quotes/dashes (`--tail` typed in a text field can arrive as
+    /// `—tail`) and joins lines, since a newline reaching the terminal acts as
+    /// Enter — which would run a command that was only meant to be prepared.
+    private static func normalizeEditedCommand(_ command: String) -> String {
+        var result = command
+        let replacements: [(String, String)] = [
+            ("\u{201C}", "\""), ("\u{201D}", "\""), ("\u{201E}", "\""),
+            ("\u{2018}", "'"), ("\u{2019}", "'"),
+            ("\u{2014}", "--"), ("\u{2013}", "-"),
+            ("\r\n", "\n"), ("\r", "\n"),
+            ("\\\n", ""), ("\n", " "),
+        ]
+        for (target, replacement) in replacements {
+            result = result.replacingOccurrences(of: target, with: replacement)
+        }
+        return result
     }
 
     /// Manually added (unscoped) apps are always shown; auto-discovered
@@ -172,6 +192,7 @@ struct MenuBarContentView: View {
                     }
                     TextField("", text: commandPreviewBinding, axis: .vertical)
                         .textFieldStyle(.plain)
+                        .autocorrectionDisabled()
                         .font(.system(.caption, design: .monospaced))
                         .lineLimit(1...12)
                         .fixedSize(horizontal: false, vertical: true)
