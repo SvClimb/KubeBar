@@ -28,20 +28,9 @@ final class ConfigStore: ObservableObject {
         Utility(name: "kwatch", executable: "kwatch", commandTemplate: "{executable} --context {context} -n {namespace}")
     ]
 
+    /// The first profile is the default selection: Terminal.app ships with
+    /// every Mac, unlike Ghostty/iTerm2.
     static let defaultTerminalProfiles: [TerminalProfile] = [
-        TerminalProfile(
-            name: "Ghostty",
-            // Uses Ghostty's native AppleScript API (new window + input text
-            // + send key) instead of `open -na Ghostty --args -e ...`: the
-            // `-n` flag to `open` forces a brand new Ghostty *process*
-            // instance every launch (visible as a second running app), while
-            // AppleScript always talks to the single already-running
-            // instance. As a bonus, typing into the window's default shell
-            // means aliases (e.g. `k` for kubectl) just work, no /bin/zsh -ic
-            // wrapping needed.
-            launchTemplate: #"osascript -e 'tell application "Ghostty"' -e 'set t to focused terminal of selected tab of (new window)' -e 'input text "{{command}}" to t' -e 'send key "enter" to t' -e 'end tell'"#,
-            prepareTemplate: #"osascript -e 'tell application "Ghostty"' -e 'set t to focused terminal of selected tab of (new window)' -e 'input text "{{command}}" to t' -e 'end tell'"#
-        ),
         TerminalProfile(
             // When Terminal.app isn't already running, sending it a plain
             // `do script` Apple Event makes macOS launch it — but Terminal's
@@ -55,6 +44,19 @@ final class ConfigStore: ObservableObject {
             name: "Terminal.app",
             launchTemplate: #"osascript -e 'tell application "Terminal"' -e 'set wasRunning to running' -e 'if wasRunning is false then' -e 'activate' -e 'delay 1' -e 'end if' -e 'if wasRunning is false then' -e 'do script "{{command}}" in window 1' -e 'else' -e 'do script "{{command}}"' -e 'end if' -e 'end tell'"#,
             prepareTemplate: #"osascript -e 'tell application "Terminal"' -e 'set wasRunning to running' -e 'if wasRunning is false then' -e 'activate' -e 'delay 1' -e 'end if' -e 'if wasRunning is false then' -e 'do script "exec env ZDOTDIR={{zdotdir}} /bin/zsh -i" in window 1' -e 'else' -e 'do script "exec env ZDOTDIR={{zdotdir}} /bin/zsh -i"' -e 'end if' -e 'end tell'"#
+        ),
+        TerminalProfile(
+            name: "Ghostty",
+            // Uses Ghostty's native AppleScript API (new window + input text
+            // + send key) instead of `open -na Ghostty --args -e ...`: the
+            // `-n` flag to `open` forces a brand new Ghostty *process*
+            // instance every launch (visible as a second running app), while
+            // AppleScript always talks to the single already-running
+            // instance. As a bonus, typing into the window's default shell
+            // means aliases (e.g. `k` for kubectl) just work, no /bin/zsh -ic
+            // wrapping needed.
+            launchTemplate: #"osascript -e 'tell application "Ghostty"' -e 'set t to focused terminal of selected tab of (new window)' -e 'input text "{{command}}" to t' -e 'send key "enter" to t' -e 'end tell'"#,
+            prepareTemplate: #"osascript -e 'tell application "Ghostty"' -e 'set t to focused terminal of selected tab of (new window)' -e 'input text "{{command}}" to t' -e 'end tell'"#
         ),
         TerminalProfile(
             // iTerm2's actual AppleScript application name is "iTerm", not

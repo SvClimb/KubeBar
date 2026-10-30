@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var configStore: ConfigStore
@@ -21,6 +23,7 @@ struct SettingsView: View {
     @State private var newTerminalName = ""
     @State private var launchAtLogin = false
     @State private var historyError: String?
+    @State private var exportError: String?
     @State private var language = AppLanguage.current
 
     var body: some View {
@@ -99,8 +102,23 @@ struct SettingsView: View {
                 }
             }
 
-            Button("Add utility") {
-                utilitySheet = .add
+            if let exportError {
+                Text(exportError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Button("Add utility") {
+                    utilitySheet = .add
+                }
+                Spacer()
+                Button("Export…") {
+                    exportUtilities()
+                }
+                .disabled(configStore.utilities.isEmpty)
+                .help("Save the utility templates to a JSON file")
             }
         }
         .sheet(item: $utilitySheet) { sheet in
@@ -127,6 +145,23 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func exportUtilities() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "KubeBar-utilities.json"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        do {
+            try encoder.encode(configStore.utilities).write(to: url, options: .atomic)
+            exportError = nil
+        } catch {
+            exportError = String(localized: "Couldn't export utilities: \(error.localizedDescription)")
         }
     }
 

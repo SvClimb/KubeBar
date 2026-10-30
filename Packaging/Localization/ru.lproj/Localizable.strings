@@ -75,3 +75,7 @@
 "System" = "Системный";
 "The language changes after KubeBar restarts." = "Язык сменится после перезапуска KubeBar.";
 "Restart now" = "Перезапустить";
+"Copy command" = "Скопировать команду";
+"Export…" = "Экспорт…";
+"Save the utility templates to a JSON file" = "Сохранить шаблоны утилит в JSON-файл";
+"Couldn't export utilities: %@" = "Не удалось экспортировать утилиты: %@";
