@@ -36,6 +36,9 @@ mkdir -p "$STAGING_BUNDLE/Contents/MacOS" "$STAGING_BUNDLE/Contents/Resources"
 lipo -create -output "$STAGING_BUNDLE/Contents/MacOS/$APP_NAME" \
     "$PROJECT_DIR/.build/arm64-apple-macosx/release/$APP_NAME" \
     "$PROJECT_DIR/.build/x86_64-apple-macosx/release/$APP_NAME"
+# Drop the debug symbol table: its entries embed absolute paths of the build
+# machine's source and .o files (/Users/<name>/...).
+strip -S "$STAGING_BUNDLE/Contents/MacOS/$APP_NAME"
 cp "$PROJECT_DIR/Packaging/Info.plist" "$STAGING_BUNDLE/Contents/Info.plist"
 cp "$PROJECT_DIR/Packaging/AppIcon.icns" "$STAGING_BUNDLE/Contents/Resources/AppIcon.icns"
 # Copied straight into Contents/Resources (not SwiftPM resources, whose
