@@ -1,0 +1,54 @@
+# Push a tag like v1.1 → builds KubeBar-1.1.zip, publishes a GitHub release
+# and bumps the cask in svclimb/homebrew-tap.
+#
+# The cask bump needs a repo secret HOMEBREW_TAP_TOKEN: a fine-grained token
+# with "Contents: read and write" on svclimb/homebrew-tap. Without it the
+# release is still published and the step is skipped.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Packaging/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" Packaging/Info.plist
+
+      - name: Build
+        run: Packaging/build-app.sh --zip
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "dist/KubeBar-$VERSION.zip" \
+            --title "KubeBar $VERSION" --generate-notes
+
+      - name: Update Homebrew cask
+        if: env.TAP_TOKEN != ''
+        run: |
+          SHA=$(shasum -a 256 "dist/KubeBar-$VERSION.zip" | cut -d' ' -f1)
+          git clone "https://x-access-token:$TAP_TOKEN@github.com/svclimb/homebrew-tap.git" tap
+          cd tap
+          sed -i '' -E \
+            -e "s/^  version \".*\"/  version \"$VERSION\"/" \
+            -e "s/^  sha256 \".*\"/  sha256 \"$SHA\"/" \
+            Casks/kubebar.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "kubebar $VERSION"
+          git push

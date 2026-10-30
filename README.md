@@ -11,15 +11,23 @@
 
 Требуется macOS 14+ и установленный `kubectl` (плюс `stern` и т.п. — по желанию).
 
-## Установка из zip
+## Установка
 
-1. Распакуйте `KubeBar-<версия>.zip` и перетащите `KubeBar.app` в «Программы».
-2. Приложение не подписано сертификатом Apple Developer, поэтому при первом запуске macOS его заблокирует. Варианты:
-   - запустить один раз, затем **Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть»**;
-   - или в терминале: `xattr -dr com.apple.quarantine /Applications/KubeBar.app`.
-3. При первом запуске команды macOS спросит разрешение на управление терминалом — нажмите «Разрешить». Если случайно отказали: **Системные настройки → Конфиденциальность и безопасность → Автоматизация → KubeBar**.
+```sh
+brew install --cask svclimb/tap/kubebar
+```
 
-Иконка появится в строке меню (значок терминала); в Dock приложения нет.
+Обновление — `brew upgrade --cask kubebar`, удаление — `brew uninstall --cask kubebar` (с `--zap` — вместе с настройками).
+
+Иконка появится в строке меню (значок терминала); в Dock приложения нет. При первом запуске команды macOS спросит разрешение на управление терминалом — нажмите «Разрешить». Если случайно отказали: **Системные настройки → Конфиденциальность и безопасность → Автоматизация → KubeBar**.
+
+<details>
+<summary>Без Homebrew</summary>
+
+1. Скачайте `KubeBar-<версия>.zip` со страницы [Releases](https://github.com/svclimb/KubeBar/releases), распакуйте и перетащите `KubeBar.app` в «Программы».
+2. Приложение не подписано сертификатом Apple Developer, поэтому при первом запуске macOS его заблокирует. Либо запустите один раз и нажмите **Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть»**, либо выполните `xattr -dr com.apple.quarantine /Applications/KubeBar.app`. Homebrew-установка делает это сама.
+
+</details>
 
 ## Настройка
 
@@ -42,5 +50,13 @@ Packaging/build-app.sh --zip    # собрать dist/KubeBar-<версия>.zip
 ```
 
 Сборка универсальная (Apple Silicon + Intel), подпись ad-hoc.
+
+## Выпуск новой версии
+
+```sh
+git tag v1.1 && git push origin v1.1
+```
+
+GitHub Actions (`.github/workflows/release.yml`) соберёт `KubeBar-1.1.zip` (версия берётся из тега), опубликует релиз и обновит cask в [svclimb/homebrew-tap](https://github.com/svclimb/homebrew-tap). Для последнего нужен секрет `HOMEBREW_TAP_TOKEN` в настройках репозитория — fine-grained token с правом «Contents: Read and write» на `svclimb/homebrew-tap`.
 
 Строки интерфейса в коде — на английском, они же ключи перевода; русский перевод в `Packaging/Localization/ru.lproj/Localizable.strings`. При `swift run` интерфейс всегда английский: переводы подключаются только в собранный `.app`.
