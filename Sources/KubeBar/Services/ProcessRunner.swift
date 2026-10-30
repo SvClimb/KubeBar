@@ -7,9 +7,9 @@ enum ProcessRunnerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .executableNotFound(let name):
-            return "\(name) не найден в PATH. Укажите путь к исполняемому файлу в настройках."
+            return String(localized: "\(name) was not found in PATH. Set the full path to the executable in settings.")
         case .processFailed(let message):
-            return message.isEmpty ? "Команда завершилась с ошибкой." : message
+            return message.isEmpty ? String(localized: "The command failed.") : message
         }
     }
 }

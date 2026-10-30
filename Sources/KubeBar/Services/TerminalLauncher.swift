@@ -1,18 +1,28 @@
 import Foundation
 
+enum SelectionField {
+    case utility, context, namespace, app
+}
+
 enum TerminalLauncherError: LocalizedError {
-    case missingSelection(String)
+    case missingSelection(SelectionField)
     case launchFailed(String)
     case noTemplateConfigured(String)
 
     var errorDescription: String? {
         switch self {
-        case .missingSelection(let field):
-            return "\(field) не выбран(а)."
+        case .missingSelection(.utility):
+            return String(localized: "Select a utility.")
+        case .missingSelection(.context):
+            return String(localized: "Select a context.")
+        case .missingSelection(.namespace):
+            return String(localized: "Select a namespace.")
+        case .missingSelection(.app):
+            return String(localized: "Select an app.")
         case .launchFailed(let message):
-            return "Не удалось открыть терминал: \(message)"
+            return String(localized: "Couldn't open the terminal: \(message)")
         case .noTemplateConfigured(let profileName):
-            return "Для терминала «\(profileName)» не настроен шаблон подготовки команды (вкладка «Терминал» в настройках)."
+            return String(localized: "Terminal “\(profileName)” has no prepare template configured (Terminal tab in settings).")
         }
     }
 }
@@ -30,17 +40,17 @@ enum TerminalLauncher {
     static func buildCommand(selection: LaunchSelection, utilities: [Utility]) throws -> (utility: Utility, commandString: String) {
         guard let utilityName = selection.utilityName,
               let utility = utilities.first(where: { $0.name == utilityName }) else {
-            throw TerminalLauncherError.missingSelection("Утилита")
+            throw TerminalLauncherError.missingSelection(.utility)
         }
         guard let context = selection.contextName, !context.isEmpty else {
-            throw TerminalLauncherError.missingSelection("Контекст")
+            throw TerminalLauncherError.missingSelection(.context)
         }
         guard let namespace = selection.namespaceName, !namespace.isEmpty else {
-            throw TerminalLauncherError.missingSelection("Namespace")
+            throw TerminalLauncherError.missingSelection(.namespace)
         }
         if utility.commandTemplate.contains("{app}") {
             guard let app = selection.appName, !app.isEmpty else {
-                throw TerminalLauncherError.missingSelection("App")
+                throw TerminalLauncherError.missingSelection(.app)
             }
         }
 
@@ -60,7 +70,7 @@ enum TerminalLauncher {
 
         return render(
             utility,
-            context: nonEmpty(selection.contextName) ?? "‹контекст›",
+            context: nonEmpty(selection.contextName) ?? String(localized: "‹context›"),
             namespace: nonEmpty(selection.namespaceName) ?? "‹namespace›",
             app: nonEmpty(selection.appName) ?? "‹app›"
         )

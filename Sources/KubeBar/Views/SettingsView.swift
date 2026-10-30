@@ -21,15 +21,16 @@ struct SettingsView: View {
     @State private var newTerminalName = ""
     @State private var launchAtLogin = false
     @State private var historyError: String?
+    @State private var language = AppLanguage.current
 
     var body: some View {
         TabView {
-            utilitiesTab.tabItem { Text("Утилиты") }
+            utilitiesTab.tabItem { Text("Utilities") }
             namespacesTab.tabItem { Text("Namespaces") }
             appsTab.tabItem { Text("Apps") }
-            terminalTab.tabItem { Text("Терминал") }
-            historyTab.tabItem { Text("История") }
-            generalTab.tabItem { Text("Общие") }
+            terminalTab.tabItem { Text("Terminal") }
+            historyTab.tabItem { Text("History") }
+            generalTab.tabItem { Text("General") }
         }
         .padding(20)
         .frame(width: 540, height: 440)
@@ -44,29 +45,29 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.borderless)
-        .help("Удалить")
+        .help("Delete")
     }
 
     // MARK: - Утилиты
 
-    private static let utilityTemplateExamples: [(name: String, template: String)] = [
-        ("stern (по умолчанию)", "{executable} --context {context} -n {namespace} {app}"),
-        ("stern с таймаутом", "{executable} --context {context} -n {namespace} {app} --since 1h --timeout 30m"),
+    private static let utilityTemplateExamples: [(name: LocalizedStringKey, template: String)] = [
+        ("stern (default)", "{executable} --context {context} -n {namespace} {app}"),
+        ("stern with timeout", "{executable} --context {context} -n {namespace} {app} --since 1h --timeout 30m"),
         ("kubectl logs", "{executable} --context {context} -n {namespace} logs -f deployment/{app}"),
         ("kubectl get pods", "{executable} --context {context} -n {namespace} get pods -l app={app} -o wide"),
-        ("kubectl без app", "{executable} --context {context} -n {namespace}")
+        ("kubectl without app", "{executable} --context {context} -n {namespace}")
     ]
 
     private var utilitiesTab: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Каждая строка — своя команда: имя (как показывается в меню), исполняемый файл/алиас (например «k»), и шаблон. Плейсхолдеры: {executable} {context} {namespace} {app} — уберите {app}, если утилите не нужен под/приложение. Нужны разные варианты для одной утилиты (get pods, logs, свои флаги) — просто добавьте ещё одну строку с тем же executable и другим именем/шаблоном.")
+            Text("Each row is a separate command: a name (as shown in the menu), an executable or alias (e.g. “k”), and a template. Placeholders: {executable} {context} {namespace} {app} — remove {app} if the utility doesn’t need a pod/app. Need several variants of one utility (get pods, logs, custom flags)? Add another row with the same executable and a different name/template.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            DisclosureGroup("Примеры шаблонов") {
+            DisclosureGroup("Template examples") {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Self.utilityTemplateExamples, id: \.name) { example in
+                    ForEach(Self.utilityTemplateExamples, id: \.template) { example in
                         VStack(alignment: .leading, spacing: 1) {
                             Text(example.name)
                                 .font(.caption.bold())
@@ -98,7 +99,7 @@ struct SettingsView: View {
                 }
             }
 
-            Button("Добавить утилиту") {
+            Button("Add utility") {
                 utilitySheet = .add
             }
         }
@@ -138,7 +139,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func scopeLabel(for entry: NamedEntry) -> some View {
         if let scope = entry.scopeLabel {
-            Text("· \(scope)")
+            Text(verbatim: "· \(scope)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -163,7 +164,7 @@ struct SettingsView: View {
             }
             HStack {
                 TextField("Namespace", text: $newNamespace)
-                Button("Добавить") {
+                Button("Add") {
                     guard !newNamespace.isEmpty else { return }
                     configStore.addNamespace(newNamespace)
                     newNamespace = ""
@@ -191,7 +192,7 @@ struct SettingsView: View {
             }
             HStack {
                 TextField("App", text: $newApp)
-                Button("Добавить") {
+                Button("Add") {
                     guard !newApp.isEmpty else { return }
                     configStore.addApp(newApp)
                     newApp = ""
@@ -204,11 +205,11 @@ struct SettingsView: View {
 
     private var terminalTab: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("{{command}} заменяется на собранную команду утилиты, строка выполняется как есть через /bin/zsh -lc. «Команда запуска» — сразу выполняет; «Команда подготовки» — открывает терминал с командой, но не запускает (пусто = режим «Подготовить» недоступен для этого профиля).")
+            Text("{{command}} is replaced with the assembled utility command; the line runs as is via /bin/zsh -lc. “Launch command” runs it right away; “Prepare command” opens the terminal with the command typed in but not run (empty = “Prepare” is unavailable for this profile).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Picker("Активный терминал", selection: $configStore.selectedTerminalProfileName) {
+            Picker("Active terminal", selection: $configStore.selectedTerminalProfileName) {
                 ForEach(configStore.terminalProfiles) { profile in
                     Text(profile.name).tag(profile.name)
                 }
@@ -221,10 +222,10 @@ struct SettingsView: View {
                 ForEach($configStore.terminalProfiles) { $profile in
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
-                            TextField("Имя", text: renameBinding($profile.name))
-                            TextField("Команда запуска", text: $profile.launchTemplate)
+                            TextField("Name", text: renameBinding($profile.name))
+                            TextField("Launch command", text: $profile.launchTemplate)
                                 .font(.system(.body, design: .monospaced))
-                            TextField("Команда подготовки (без выполнения)", text: $profile.prepareTemplate)
+                            TextField("Prepare command (without running)", text: $profile.prepareTemplate)
                                 .font(.system(.body, design: .monospaced))
                         }
                         deleteButton {
@@ -240,8 +241,8 @@ struct SettingsView: View {
             }
 
             HStack {
-                TextField("Имя нового профиля", text: $newTerminalName)
-                Button("Добавить") {
+                TextField("New profile name", text: $newTerminalName)
+                Button("Add") {
                     guard !newTerminalName.isEmpty else { return }
                     configStore.terminalProfiles.append(
                         TerminalProfile(
@@ -276,11 +277,11 @@ struct SettingsView: View {
     private var historyTab: some View {
         VStack(alignment: .leading) {
             HStack {
-                Text("Последние \(ConfigStore.maxHistoryEntries) команд. Правый клик по записи — запустить снова.")
+                Text("Last \(ConfigStore.maxHistoryEntries) commands. Right-click an entry to run it again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("Очистить") {
+                Button("Clear") {
                     configStore.clearHistory()
                 }
                 .disabled(configStore.history.isEmpty)
@@ -294,7 +295,7 @@ struct SettingsView: View {
             }
 
             if configStore.history.isEmpty {
-                Text("Пока пусто — команды появятся здесь после запуска.")
+                Text("Nothing here yet — commands will appear after you run them.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -306,7 +307,7 @@ struct SettingsView: View {
                         HStack(spacing: 4) {
                             Text(entry.timestamp.formatted(date: .abbreviated, time: .shortened))
                             if entry.wasPrepared {
-                                Text("· подготовлена")
+                                Text("· prepared")
                             }
                         }
                         .font(.caption)
@@ -314,10 +315,10 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 2)
                     .contextMenu {
-                        Button("Запустить снова") {
+                        Button("Run again") {
                             relaunch(entry, mode: .execute)
                         }
-                        Button("Подготовить снова") {
+                        Button("Prepare again") {
                             relaunch(entry, mode: .prepare)
                         }
                     }
@@ -328,7 +329,7 @@ struct SettingsView: View {
 
     private func relaunch(_ entry: HistoryEntry, mode: TerminalLaunchMode) {
         guard let profile = configStore.selectedTerminalProfile else {
-            historyError = "Не выбран терминал во вкладке «Терминал»."
+            historyError = String(localized: "No terminal selected on the Terminal tab.")
             return
         }
         do {
@@ -343,10 +344,32 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Toggle("Запускать при входе в систему", isOn: $launchAtLogin)
+            Toggle("Launch at login", isOn: $launchAtLogin)
                 .onChange(of: launchAtLogin) { _, newValue in
                     LoginItemManager.setEnabled(newValue)
                 }
+
+            Picker("Language", selection: $language) {
+                Text("System").tag(AppLanguage.system)
+                // Language names stay in their own language, as in macOS.
+                Text(verbatim: "Русский").tag(AppLanguage.russian)
+                Text(verbatim: "English").tag(AppLanguage.english)
+            }
+            .fixedSize()
+            .onChange(of: language) { _, newValue in
+                AppLanguage.set(newValue)
+            }
+
+            if language != AppLanguage.atLaunch {
+                HStack {
+                    Text("The language changes after KubeBar restarts.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Restart now") {
+                        AppLanguage.relaunch()
+                    }
+                }
+            }
             Spacer()
         }
     }
@@ -379,15 +402,15 @@ private struct UtilityRow: View {
             }
             .buttonStyle(.borderless)
             .font(.caption)
-            .help("Изменить порядок")
+            .help("Reorder")
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
-                    Text("Имя:").font(.caption).foregroundStyle(.secondary)
+                    Text("Name:").font(.caption).foregroundStyle(.secondary)
                     Text(utility.name).font(.headline)
                 }
                 HStack(spacing: 4) {
-                    Text("Утилита:").font(.caption).foregroundStyle(.secondary)
+                    Text("Executable:").font(.caption).foregroundStyle(.secondary)
                     Text(utility.executable)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -405,14 +428,14 @@ private struct UtilityRow: View {
                 Image(systemName: "pencil")
             }
             .buttonStyle(.borderless)
-            .help("Редактировать")
+            .help("Edit")
 
             Button(action: onDelete) {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
-            .help("Удалить")
+            .help("Delete")
         }
         .padding(.vertical, 4)
     }

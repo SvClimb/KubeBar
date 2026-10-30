@@ -28,11 +28,11 @@ struct UtilityEditorView: View {
         self.onSave = onSave
     }
 
-    private static let placeholders: [(token: String, hint: String)] = [
-        ("{executable}", "исполняемый файл утилиты"),
-        ("{context}", "выбранный контекст kubectl"),
-        ("{namespace}", "выбранный namespace"),
-        ("{app}", "выбранное приложение/под — уберите, если утилите оно не нужно")
+    private static let placeholders: [(token: String, hint: LocalizedStringKey)] = [
+        ("{executable}", "the utility’s executable"),
+        ("{context}", "the selected kubectl context"),
+        ("{namespace}", "the selected namespace"),
+        ("{app}", "the selected app/pod — remove it if the utility doesn’t need one")
     ]
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -57,23 +57,23 @@ struct UtilityEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(isNew ? "Новая утилита" : "Редактировать утилиту")
+            (isNew ? Text("New utility") : Text("Edit utility"))
                 .font(.headline)
 
-            labeledField("Имя (как показывается в меню)") {
-                TextField("например, kubectl logs", text: $name)
+            labeledField("Name (as shown in the menu)") {
+                TextField("e.g. kubectl logs", text: $name)
                 if isDuplicateName {
-                    Text("Утилита с таким именем уже существует")
+                    Text("A utility with this name already exists")
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
             }
 
-            labeledField("Исполняемый файл или путь") {
-                TextField("например, kubectl", text: $executable)
+            labeledField("Executable or path") {
+                TextField("e.g. kubectl", text: $executable)
             }
 
-            labeledField("Шаблон команды") {
+            labeledField("Command template") {
                 TextEditor(text: $commandTemplate)
                     .font(.system(.body, design: .monospaced))
                     .frame(minHeight: 90)
@@ -81,7 +81,7 @@ struct UtilityEditorView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Вставить плейсхолдер")
+                Text("Insert placeholder")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 6) {
@@ -96,7 +96,7 @@ struct UtilityEditorView: View {
                 }
             }
 
-            labeledField("Предпросмотр") {
+            labeledField("Preview") {
                 Text(preview)
                     .font(.system(.callout, design: .monospaced))
                     .textSelection(.enabled)
@@ -107,8 +107,8 @@ struct UtilityEditorView: View {
 
             HStack {
                 Spacer()
-                Button("Отмена") { dismiss() }
-                Button("Сохранить") {
+                Button("Cancel") { dismiss() }
+                Button("Save") {
                     onSave(Utility(name: trimmedName, executable: trimmedExecutable, commandTemplate: trimmedTemplate))
                     dismiss()
                 }
@@ -121,7 +121,7 @@ struct UtilityEditorView: View {
     }
 
     @ViewBuilder
-    private func labeledField<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+    private func labeledField<Content: View>(_ label: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption)

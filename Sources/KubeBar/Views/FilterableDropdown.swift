@@ -14,7 +14,7 @@ enum DropdownPlacement {
 /// drawn as an overlay (not inserted into the surrounding stack), so
 /// opening it never shifts sibling views.
 struct FilterableDropdown: View {
-    let title: String
+    let title: LocalizedStringKey
     let items: [String]
     @Binding var selection: String?
     @Binding var isOpen: Bool
@@ -72,7 +72,7 @@ struct FilterableDropdown: View {
     @ViewBuilder
     private var control: some View {
         if isOpen {
-            TextField("Поиск…", text: $searchText)
+            TextField("Search…", text: $searchText)
                 .textFieldStyle(.roundedBorder)
                 .focused($isFieldFocused)
                 .onSubmit { commitFirstMatch() }
@@ -103,7 +103,7 @@ struct FilterableDropdown: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if filteredItems.isEmpty {
-                    Text("Нет совпадений")
+                    Text("No matches")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 10)

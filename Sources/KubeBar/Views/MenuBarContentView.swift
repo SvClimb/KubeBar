@@ -113,7 +113,7 @@ struct MenuBarContentView: View {
             Text("KubeBar").font(.headline)
 
             FilterableDropdown(
-                title: "Утилита",
+                title: "Utility",
                 items: configStore.utilities.map(\.name),
                 selection: $selectedUtility,
                 isOpen: openBinding(for: .utility),
@@ -123,7 +123,7 @@ struct MenuBarContentView: View {
 
             HStack {
                 FilterableDropdown(
-                    title: "Контекст",
+                    title: "Context",
                     items: contexts.map(\.name),
                     selection: $selectedContext,
                     isOpen: openBinding(for: .context),
@@ -191,17 +191,17 @@ struct MenuBarContentView: View {
             if commandPreview != nil {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        Text(editedCommand == nil ? "Предпросмотр" : "Предпросмотр (изменено)")
+                        (editedCommand == nil ? Text("Preview") : Text("Preview (edited)"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
                         if editedCommand != nil {
-                            Button("Сбросить") {
+                            Button("Reset") {
                                 editedCommand = nil
                             }
                             .font(.caption)
                             .buttonStyle(.borderless)
-                            .help("Вернуть команду из шаблона утилиты")
+                            .help("Restore the command from the utility template")
                         }
                     }
                     TextField("", text: commandPreviewBinding, axis: .vertical)
@@ -217,7 +217,7 @@ struct MenuBarContentView: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .strokeBorder(Color.accentColor.opacity(editedCommand == nil ? 0 : 0.6))
                         )
-                        .help("Можно отредактировать команду для этого запуска — шаблон утилиты не изменится")
+                        .help("You can edit the command for this run — the utility template stays unchanged")
                 }
             }
 
@@ -236,10 +236,10 @@ struct MenuBarContentView: View {
                 }
                 .keyboardShortcut(.defaultAction)
 
-                Button("Подготовить") {
+                Button("Prepare") {
                     launch(mode: .prepare)
                 }
-                .help("Открыть терминал с готовой командой, не запуская её")
+                .help("Open the terminal with the command typed in, without running it")
 
                 if isLaunching {
                     ProgressView().controlSize(.small)
@@ -253,6 +253,7 @@ struct MenuBarContentView: View {
                     Image(systemName: "gearshape")
                 }
                 .buttonStyle(.borderless)
+                .help("Settings")
 
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)
@@ -429,7 +430,7 @@ struct MenuBarContentView: View {
         guard !isLaunching else { return }
         let selection = currentSelection
         guard let profile = configStore.selectedTerminalProfile else {
-            errorMessage = "Не выбран терминал в настройках."
+            errorMessage = String(localized: "No terminal selected in settings.")
             return
         }
         let utility: Utility
@@ -445,7 +446,7 @@ struct MenuBarContentView: View {
         if let editedCommand {
             let trimmed = editedCommand.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else {
-                errorMessage = "Команда пустая."
+                errorMessage = String(localized: "The command is empty.")
                 return
             }
             commandString = trimmed

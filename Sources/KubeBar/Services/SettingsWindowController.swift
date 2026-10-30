@@ -19,7 +19,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let hosting = NSHostingController(rootView: rootView)
 
         let newWindow = NSWindow(contentViewController: hosting)
-        newWindow.title = "Настройки KubeBar"
+        newWindow.title = String(localized: "KubeBar Settings")
         newWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         newWindow.setContentSize(NSSize(width: 540, height: 440))
         newWindow.center()

@@ -4,3 +4,6 @@ dist/
 .DS_Store
 .codegraph/
 .claude/settings.local.json
+*.o
+*.d
+*.swiftdeps

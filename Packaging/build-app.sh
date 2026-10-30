@@ -38,6 +38,10 @@ lipo -create -output "$STAGING_BUNDLE/Contents/MacOS/$APP_NAME" \
     "$PROJECT_DIR/.build/x86_64-apple-macosx/release/$APP_NAME"
 cp "$PROJECT_DIR/Packaging/Info.plist" "$STAGING_BUNDLE/Contents/Info.plist"
 cp "$PROJECT_DIR/Packaging/AppIcon.icns" "$STAGING_BUNDLE/Contents/Resources/AppIcon.icns"
+# Copied straight into Contents/Resources (not SwiftPM resources, whose
+# bundle would land in the .app root and break code signing) so SwiftUI and
+# String(localized:) find them in Bundle.main.
+cp -R "$PROJECT_DIR/Packaging/Localization/"*.lproj "$STAGING_BUNDLE/Contents/Resources/"
 codesign --force --sign - "$STAGING_BUNDLE"
 
 if [[ $MODE == zip ]]; then
