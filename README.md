@@ -45,11 +45,11 @@ brew install --cask svclimb/tap/kubebar
 Нужны Xcode Command Line Tools (`xcode-select --install`).
 
 ```sh
-Packaging/build-app.sh          # собрать, установить в /Applications и перезапустить
+Packaging/build-app.sh          # собрать dist/KubeBar.app и запустить его вместо текущего KubeBar
 Packaging/build-app.sh --zip    # собрать dist/KubeBar-<версия>.zip для раздачи
 ```
 
-Сборка универсальная (Apple Silicon + Intel), подпись ad-hoc.
+Сборка универсальная (Apple Silicon + Intel), подпись ad-hoc. Скрипт не трогает `/Applications` — там живёт копия, установленная через brew; чтобы вернуться к ней после проверки, закройте dev-сборку и выполните `open -a /Applications/KubeBar.app`.
 
 ## Выпуск новой версии
 

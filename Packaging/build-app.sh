@@ -1,8 +1,14 @@
 #!/bin/zsh
 # Builds a universal (Apple Silicon + Intel) KubeBar.app.
 #
-#   Packaging/build-app.sh          build, install to /Applications, restart KubeBar
+#   Packaging/build-app.sh          build dist/KubeBar.app and run it in place of
+#                                   the running KubeBar
 #   Packaging/build-app.sh --zip    build dist/KubeBar-<version>.zip to share
+#
+# /Applications is never touched: the everyday copy there is managed by
+# Homebrew (brew install --cask svclimb/tap/kubebar), and overwriting it
+# would leave brew's records describing a different build. To go back to
+# it after testing: quit the dev build and `open -a /Applications/KubeBar.app`.
 #
 # The app is ad-hoc signed (no Apple Developer ID), so on another Mac
 # Gatekeeper blocks the first launch — see README.md for how to open it.
@@ -12,10 +18,9 @@ PROJECT_DIR="$(cd "$(dirname "${(%):-%x}")/.." && pwd)"
 APP_NAME="KubeBar"
 DIST_DIR="$PROJECT_DIR/dist"
 STAGING_BUNDLE="$DIST_DIR/$APP_NAME.app"
-INSTALLED_BUNDLE="/Applications/$APP_NAME.app"
 MIN_MACOS="14.0"
 
-MODE=install
+MODE=run
 case "${1:-}" in
     "") ;;
     --zip) MODE=zip ;;
@@ -29,6 +34,15 @@ for arch in arm64 x86_64; do
     echo "Building release binary ($arch)..."
     swift build -c release --package-path "$PROJECT_DIR" --triple "$arch-apple-macosx$MIN_MACOS"
 done
+
+# Never leave the old version running next to the new one — whichever copy
+# it is (the brew one or a previous dev build), it shares the same settings.
+if [[ $MODE == run ]] && pgrep -xq "$APP_NAME"; then
+    echo "Quitting running $APP_NAME..."
+    osascript -e "tell application id \"com.svclimb.kubebar\" to quit" >/dev/null 2>&1 || true
+    for _ in {1..20}; do pgrep -xq "$APP_NAME" || break; sleep 0.25; done
+    pkill -x "$APP_NAME" || true
+fi
 
 echo "Assembling $APP_NAME.app..."
 rm -rf "$STAGING_BUNDLE"
@@ -57,17 +71,6 @@ if [[ $MODE == zip ]]; then
     exit 0
 fi
 
-# Never leave the old version running next to the new one.
-if pgrep -xq "$APP_NAME"; then
-    echo "Quitting running $APP_NAME..."
-    osascript -e "tell application id \"com.svclimb.kubebar\" to quit" >/dev/null 2>&1 || true
-    for _ in {1..20}; do pgrep -xq "$APP_NAME" || break; sleep 0.25; done
-    pkill -x "$APP_NAME" || true
-fi
+open "$STAGING_BUNDLE"
 
-echo "Installing to $INSTALLED_BUNDLE..."
-rm -rf "$INSTALLED_BUNDLE"
-mv "$STAGING_BUNDLE" "$INSTALLED_BUNDLE"
-open "$INSTALLED_BUNDLE"
-
-echo "Done: $INSTALLED_BUNDLE (running)"
+echo "Done: $STAGING_BUNDLE (running)"
