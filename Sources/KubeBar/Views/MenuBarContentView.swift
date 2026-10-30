@@ -20,6 +20,7 @@ struct MenuBarContentView: View {
     @State private var isLoadingContexts = false
     @State private var isRefreshingNamespaces = false
     @State private var isRefreshingApps = false
+    @State private var isLaunching = false
     @State private var errorMessage: String?
 
     /// Which dropdown (if any) is currently expanded. Only one may be
@@ -36,6 +37,10 @@ struct MenuBarContentView: View {
     /// changes so a stale edit can't leak into a different command.
     @State private var editedCommand: String?
 
+    /// The popover's window, used to shrink it when the content gets shorter.
+    @State private var hostWindow: NSWindow?
+    @State private var contentHeight: CGFloat = 0
+
     private var selectedUtilityObject: Utility? {
         configStore.utilities.first { $0.name == selectedUtility }
     }
@@ -44,14 +49,17 @@ struct MenuBarContentView: View {
         selectedUtilityObject?.commandTemplate.contains("{app}") ?? false
     }
 
-    private var commandPreview: String? {
-        let selection = LaunchSelection(
+    private var currentSelection: LaunchSelection {
+        LaunchSelection(
             utilityName: selectedUtility,
             contextName: selectedContext,
             namespaceName: selectedNamespace,
             appName: selectedApp
         )
-        return TerminalLauncher.previewCommand(selection: selection, utilities: configStore.utilities)
+    }
+
+    private var commandPreview: String? {
+        TerminalLauncher.previewCommand(selection: currentSelection, utilities: configStore.utilities)
     }
 
     private var commandPreviewBinding: Binding<String> {
@@ -81,6 +89,12 @@ struct MenuBarContentView: View {
             result = result.replacingOccurrences(of: target, with: replacement)
         }
         return result
+    }
+
+    /// Manually added (unscoped) namespaces are always shown; auto-discovered
+    /// ones only for the context they were fetched from.
+    private var availableNamespaces: [NamedEntry] {
+        configStore.savedNamespaces.filter { $0.contextName == nil || $0.contextName == selectedContext }
     }
 
     /// Manually added (unscoped) apps are always shown; auto-discovered
@@ -131,7 +145,7 @@ struct MenuBarContentView: View {
             HStack {
                 FilterableDropdown(
                     title: "Namespace",
-                    items: configStore.savedNamespaces.map(\.name),
+                    items: availableNamespaces.map(\.name),
                     selection: $selectedNamespace,
                     isOpen: openBinding(for: .namespace),
                     placement: .above
@@ -227,6 +241,10 @@ struct MenuBarContentView: View {
                 }
                 .help("Открыть терминал с готовой командой, не запуская её")
 
+                if isLaunching {
+                    ProgressView().controlSize(.small)
+                }
+
                 Spacer()
 
                 Button {
@@ -244,6 +262,16 @@ struct MenuBarContentView: View {
         }
         .padding(16)
         .frame(width: 340)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { contentHeight = geo.size.height }
+                    .onChange(of: geo.size.height) { _, newValue in contentHeight = newValue }
+            }
+        )
+        .background(WindowAccessor(window: $hostWindow))
+        .onChange(of: contentHeight) { _, _ in fitWindow() }
+        .onChange(of: hostWindow) { _, _ in fitWindow() }
         .contentShape(Rectangle())
         .onTapGesture {
             openDropdown = nil
@@ -283,13 +311,25 @@ struct MenuBarContentView: View {
     /// the view's @State is torn down and next time it can only restore
     /// from `configStore.lastSelection`.
     private func persistSelection() {
-        configStore.lastSelection = LaunchSelection(
-            utilityName: selectedUtility,
-            contextName: selectedContext,
-            namespaceName: selectedNamespace,
-            appName: selectedApp
-        )
+        configStore.lastSelection = currentSelection
         configStore.save()
+    }
+
+    /// `MenuBarExtra(.window)` grows its window with the content but never
+    /// shrinks it back: after a long preview or the App row goes away the
+    /// content sits in an oversized, partly blank window. Resize by hand,
+    /// keeping the top edge pinned under the menu bar.
+    private func fitWindow() {
+        DispatchQueue.main.async {
+            let height = contentHeight
+            guard let window = hostWindow, height > 0 else { return }
+            let targetHeight = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: 0, height: height)).height
+            guard abs(window.frame.height - targetHeight) > 0.5 else { return }
+            var frame = window.frame
+            frame.origin.y += frame.height - targetHeight
+            frame.size.height = targetHeight
+            window.setFrame(frame, display: true)
+        }
     }
 
     private func openBinding(for field: DropdownField) -> Binding<Bool> {
@@ -348,7 +388,7 @@ struct MenuBarContentView: View {
             do {
                 let names = try KubeQueryService.fetchNamespaces(context: context, kubectlExecutable: kubectlPath)
                 DispatchQueue.main.async {
-                    for name in names { self.configStore.addNamespace(name) }
+                    self.configStore.syncNamespaces(names, contextName: context)
                     self.isRefreshingNamespaces = false
                 }
             } catch {
@@ -386,42 +426,75 @@ struct MenuBarContentView: View {
     }
 
     private func launch(mode: TerminalLaunchMode) {
-        let selection = LaunchSelection(
-            utilityName: selectedUtility,
-            contextName: selectedContext,
-            namespaceName: selectedNamespace,
-            appName: selectedApp
-        )
+        guard !isLaunching else { return }
+        let selection = currentSelection
         guard let profile = configStore.selectedTerminalProfile else {
             errorMessage = "Не выбран терминал в настройках."
             return
         }
+        let utility: Utility
+        var commandString: String
         do {
             // buildCommand still runs on an edited command: it validates
             // the selection (which history records) and resolves the utility.
-            var (utility, commandString) = try TerminalLauncher.buildCommand(selection: selection, utilities: configStore.utilities)
-            if let editedCommand {
-                let trimmed = editedCommand.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else {
-                    errorMessage = "Команда пустая."
-                    return
-                }
-                commandString = trimmed
-            }
-            try TerminalLauncher.launch(commandString: commandString, terminalProfile: profile, mode: mode)
-            configStore.lastSelection = selection
-            configStore.addHistoryEntry(HistoryEntry(
-                timestamp: Date(),
-                utilityName: utility.name,
-                contextName: selection.contextName ?? "",
-                namespaceName: selection.namespaceName ?? "",
-                appName: selection.appName,
-                commandString: commandString,
-                wasPrepared: mode == .prepare
-            ))
-            errorMessage = nil
+            (utility, commandString) = try TerminalLauncher.buildCommand(selection: selection, utilities: configStore.utilities)
         } catch {
             errorMessage = error.localizedDescription
+            return
+        }
+        if let editedCommand {
+            let trimmed = editedCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                errorMessage = "Команда пустая."
+                return
+            }
+            commandString = trimmed
+        }
+
+        // Off the main thread: osascript can take a second or more (cold
+        // Terminal.app start, the first-run Automation permission prompt).
+        isLaunching = true
+        let command = commandString
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try TerminalLauncher.launch(commandString: command, terminalProfile: profile, mode: mode)
+                DispatchQueue.main.async {
+                    self.isLaunching = false
+                    self.configStore.lastSelection = selection
+                    self.configStore.addHistoryEntry(HistoryEntry(
+                        timestamp: Date(),
+                        utilityName: utility.name,
+                        contextName: selection.contextName ?? "",
+                        namespaceName: selection.namespaceName ?? "",
+                        appName: selection.appName,
+                        commandString: command,
+                        wasPrepared: mode == .prepare
+                    ))
+                    self.errorMessage = nil
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.isLaunching = false
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+}
+
+/// Exposes the NSWindow hosting a SwiftUI view.
+private struct WindowAccessor: NSViewRepresentable {
+    @Binding var window: NSWindow?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { window = view.window }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if window !== nsView.window {
+            DispatchQueue.main.async { window = nsView.window }
         }
     }
 }

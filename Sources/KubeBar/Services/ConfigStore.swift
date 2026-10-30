@@ -67,73 +67,7 @@ final class ConfigStore: ObservableObject {
         )
     ]
 
-    /// All previous "prepare" template generations we've shipped, per
-    /// built-in profile name — kept only so init() can detect and upgrade
-    /// profiles that still have an old value untouched.
-    private static let legacyPrepareTemplates: [String: [String]] = [
-        "Ghostty": [
-            "printf '%s' '{{command}}' | pbcopy && open -na Ghostty",
-            "open -na Ghostty --args -e env ZDOTDIR={{zdotdir}} /bin/zsh -i"
-        ],
-        "Terminal.app": [
-            "printf '%s' '{{command}}' | pbcopy && open -a Terminal",
-            #"osascript -e 'tell application "Terminal" to do script "exec env ZDOTDIR={{zdotdir}} /bin/zsh -i"'"#
-        ],
-        "iTerm2": [
-            #"osascript -e 'tell application "iTerm2" to tell current session of (create window with default profile) to write text "{{command}}" newline no'"#
-        ]
-    ]
-
-    /// All previous "launch" template generations we've shipped, per
-    /// built-in profile name — kept only so init() can detect and upgrade
-    /// profiles untouched since.
-    private static let legacyLaunchTemplates: [String: [String]] = [
-        "Ghostty": [
-            "open -na Ghostty --args -e {{command}}",
-            "open -na Ghostty --args -e /bin/zsh -ic '{{command}}'"
-        ],
-        "iTerm2": [
-            #"osascript -e 'tell application "iTerm2" to create window with default profile command "{{command}}"'"#
-        ],
-        "Terminal.app": [
-            #"osascript -e 'tell application "Terminal" to do script "{{command}}"'"#
-        ]
-    ]
-
-    /// Upgrades a previously-saved built-in profile (Ghostty/Terminal.app/
-    /// iTerm2) whose launch/prepare template predates a feature (missing
-    /// prepareTemplate) or still matches an old default we've since improved.
-    private static func backfillPrepareTemplateIfNeeded(_ profile: TerminalProfile) -> TerminalProfile {
-        guard let defaultMatch = defaultTerminalProfiles.first(where: { $0.name == profile.name }) else {
-            return profile
-        }
-        var updated = profile
-
-        let prepareIsMissing = profile.prepareTemplate.isEmpty
-        let prepareIsLegacy = (legacyPrepareTemplates[profile.name] ?? []).contains(profile.prepareTemplate)
-        if prepareIsMissing || prepareIsLegacy {
-            updated.prepareTemplate = defaultMatch.prepareTemplate
-        }
-
-        if (legacyLaunchTemplates[profile.name] ?? []).contains(profile.launchTemplate) {
-            updated.launchTemplate = defaultMatch.launchTemplate
-        }
-
-        return updated
-    }
-
     private let fileURL: URL
-
-    /// One-time migration from the app's old name ("SternLogger") so
-    /// existing saved namespaces/apps/history survive the rename to KubeBar.
-    private static func migrateFromLegacyAppNameIfNeeded(appSupport: URL, newFileURL: URL) {
-        guard !FileManager.default.fileExists(atPath: newFileURL.path) else { return }
-        let legacyFileURL = appSupport
-            .appendingPathComponent("SternLogger", isDirectory: true)
-            .appendingPathComponent("config.json")
-        guard FileManager.default.fileExists(atPath: legacyFileURL.path) else { return }
-        try? FileManager.default.copyItem(at: legacyFileURL, to: newFileURL)
-    }
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -141,23 +75,22 @@ final class ConfigStore: ObservableObject {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("config.json")
 
-        ConfigStore.migrateFromLegacyAppNameIfNeeded(appSupport: appSupport, newFileURL: fileURL)
-
-        var needsResave = false
-
         if let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode(PersistedConfig.self, from: data) {
             utilities = decoded.utilities
             savedNamespaces = decoded.savedNamespaces
             savedApps = decoded.savedApps
-            let loadedProfiles = decoded.terminalProfiles ?? ConfigStore.defaultTerminalProfiles
-            let backfilledProfiles = loadedProfiles.map(ConfigStore.backfillPrepareTemplateIfNeeded)
-            terminalProfiles = backfilledProfiles
-            needsResave = backfilledProfiles != loadedProfiles
+            terminalProfiles = decoded.terminalProfiles ?? ConfigStore.defaultTerminalProfiles
             selectedTerminalProfileName = decoded.selectedTerminalProfileName ?? ConfigStore.defaultTerminalProfiles[0].name
             history = decoded.history ?? []
             lastSelection = decoded.lastSelection
         } else {
+            // An unreadable config would be overwritten by the next save();
+            // keep a copy so the user's templates aren't silently lost.
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                let backupURL = dir.appendingPathComponent("config.broken-\(Int(Date().timeIntervalSince1970)).json")
+                try? FileManager.default.copyItem(at: fileURL, to: backupURL)
+            }
             utilities = ConfigStore.defaultUtilities
             savedNamespaces = []
             savedApps = []
@@ -166,15 +99,23 @@ final class ConfigStore: ObservableObject {
             history = []
             lastSelection = LaunchSelection()
         }
-
-        if needsResave {
-            save()
-        }
     }
 
     func addNamespace(_ name: String) {
-        guard !savedNamespaces.contains(where: { $0.name == name }) else { return }
+        guard !savedNamespaces.contains(where: { $0.name == name && $0.contextName == nil }) else { return }
         savedNamespaces.append(NamedEntry(name: name))
+        save()
+    }
+
+    /// Replaces the auto-discovered namespaces of one context with a freshly
+    /// fetched list, so namespaces of different clusters don't pile up in
+    /// one picker. Unscoped entries with the same names (manually added, or
+    /// fetched by versions that didn't scope namespaces) are folded into the
+    /// scoped ones.
+    func syncNamespaces(_ names: [String], contextName: String) {
+        let fetched = Set(names)
+        savedNamespaces.removeAll { $0.contextName == contextName || ($0.contextName == nil && fetched.contains($0.name)) }
+        savedNamespaces += names.map { NamedEntry(name: $0, contextName: contextName) }
         save()
     }
 

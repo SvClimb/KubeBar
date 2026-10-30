@@ -22,6 +22,8 @@
     <true/>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>KubeBar открывает окно терминала (Ghostty, Terminal или iTerm2) и передаёт в него выбранную команду.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var newApp = ""
     @State private var newTerminalName = ""
     @State private var launchAtLogin = false
+    @State private var historyError: String?
 
     var body: some View {
         TabView {
@@ -134,6 +135,15 @@ struct SettingsView: View {
         configStore.save()
     }
 
+    @ViewBuilder
+    private func scopeLabel(for entry: NamedEntry) -> some View {
+        if let scope = entry.scopeLabel {
+            Text("· \(scope)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: - Namespaces
 
     private var namespacesTab: some View {
@@ -142,6 +152,7 @@ struct SettingsView: View {
                 ForEach(configStore.savedNamespaces) { entry in
                     HStack {
                         Text(entry.name)
+                        scopeLabel(for: entry)
                         Spacer()
                         deleteButton {
                             configStore.savedNamespaces.removeAll { $0.id == entry.id }
@@ -169,11 +180,7 @@ struct SettingsView: View {
                 ForEach(configStore.savedApps) { entry in
                     HStack {
                         Text(entry.name)
-                        if let contextName = entry.contextName, let namespaceName = entry.namespaceName {
-                            Text("· \(contextName)/\(namespaceName)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        scopeLabel(for: entry)
                         Spacer()
                         deleteButton {
                             configStore.savedApps.removeAll { $0.id == entry.id }
@@ -214,7 +221,7 @@ struct SettingsView: View {
                 ForEach($configStore.terminalProfiles) { $profile in
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
-                            TextField("Имя", text: $profile.name)
+                            TextField("Имя", text: renameBinding($profile.name))
                             TextField("Команда запуска", text: $profile.launchTemplate)
                                 .font(.system(.body, design: .monospaced))
                             TextField("Команда подготовки (без выполнения)", text: $profile.prepareTemplate)
@@ -250,6 +257,20 @@ struct SettingsView: View {
         }
     }
 
+    /// Keeps the active-terminal selection (stored by name) pointing at the
+    /// profile while it's being renamed.
+    private func renameBinding(_ name: Binding<String>) -> Binding<String> {
+        Binding(
+            get: { name.wrappedValue },
+            set: { newName in
+                if configStore.selectedTerminalProfileName == name.wrappedValue {
+                    configStore.selectedTerminalProfileName = newName
+                }
+                name.wrappedValue = newName
+            }
+        )
+    }
+
     // MARK: - История
 
     private var historyTab: some View {
@@ -263,6 +284,13 @@ struct SettingsView: View {
                     configStore.clearHistory()
                 }
                 .disabled(configStore.history.isEmpty)
+            }
+
+            if let historyError {
+                Text(historyError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if configStore.history.isEmpty {
@@ -299,8 +327,16 @@ struct SettingsView: View {
     }
 
     private func relaunch(_ entry: HistoryEntry, mode: TerminalLaunchMode) {
-        guard let profile = configStore.selectedTerminalProfile else { return }
-        try? TerminalLauncher.launch(commandString: entry.commandString, terminalProfile: profile, mode: mode)
+        guard let profile = configStore.selectedTerminalProfile else {
+            historyError = "Не выбран терминал во вкладке «Терминал»."
+            return
+        }
+        do {
+            try TerminalLauncher.launch(commandString: entry.commandString, terminalProfile: profile, mode: mode)
+            historyError = nil
+        } catch {
+            historyError = error.localizedDescription
+        }
     }
 
     // MARK: - Общие

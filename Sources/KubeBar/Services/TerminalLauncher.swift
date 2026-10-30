@@ -44,17 +44,8 @@ enum TerminalLauncher {
             }
         }
 
-        var command = utility.commandTemplate
-        command = command.replacingOccurrences(of: "{executable}", with: utility.executable)
-        command = command.replacingOccurrences(of: "{context}", with: context)
-        command = command.replacingOccurrences(of: "{namespace}", with: namespace)
-        command = command.replacingOccurrences(of: "{app}", with: selection.appName ?? "")
-
-        let normalized = command
-            .split(separator: " ", omittingEmptySubsequences: true)
-            .joined(separator: " ")
-
-        return (utility, normalized)
+        let command = render(utility, context: context, namespace: namespace, app: selection.appName ?? "")
+        return (utility, command)
     }
 
     /// Best-effort preview of the command the current selection would
@@ -67,13 +58,22 @@ enum TerminalLauncher {
             return nil
         }
 
-        var command = utility.commandTemplate
-        command = command.replacingOccurrences(of: "{executable}", with: utility.executable)
-        command = command.replacingOccurrences(of: "{context}", with: nonEmpty(selection.contextName) ?? "‹контекст›")
-        command = command.replacingOccurrences(of: "{namespace}", with: nonEmpty(selection.namespaceName) ?? "‹namespace›")
-        command = command.replacingOccurrences(of: "{app}", with: nonEmpty(selection.appName) ?? "‹app›")
+        return render(
+            utility,
+            context: nonEmpty(selection.contextName) ?? "‹контекст›",
+            namespace: nonEmpty(selection.namespaceName) ?? "‹namespace›",
+            app: nonEmpty(selection.appName) ?? "‹app›"
+        )
+    }
 
-        return command
+    /// Substitutes the placeholders and collapses runs of spaces left by
+    /// empty values (e.g. no {app}).
+    private static func render(_ utility: Utility, context: String, namespace: String, app: String) -> String {
+        utility.commandTemplate
+            .replacingOccurrences(of: "{executable}", with: utility.executable)
+            .replacingOccurrences(of: "{context}", with: context)
+            .replacingOccurrences(of: "{namespace}", with: namespace)
+            .replacingOccurrences(of: "{app}", with: app)
             .split(separator: " ", omittingEmptySubsequences: true)
             .joined(separator: " ")
     }
@@ -110,19 +110,15 @@ enum TerminalLauncher {
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-lc", shellLine]
 
-        let stderrPipe = Pipe()
-        process.standardError = stderrPipe
-
+        let output: (status: Int32, stdout: Data, stderr: Data)
         do {
-            try process.run()
+            output = try ProcessRunner.collectOutput(of: process)
         } catch {
             throw TerminalLauncherError.launchFailed(error.localizedDescription)
         }
-        process.waitUntilExit()
 
-        if process.terminationStatus != 0 {
-            let data = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            let message = String(data: data, encoding: .utf8) ?? ""
+        if output.status != 0 {
+            let message = String(data: output.stderr, encoding: .utf8) ?? ""
             throw TerminalLauncherError.launchFailed(message.trimmingCharacters(in: .whitespacesAndNewlines))
         }
     }
@@ -142,8 +138,13 @@ enum TerminalLauncher {
     }
 
     /// Stages a temp ZDOTDIR whose .zshrc sources the user's real ~/.zshenv and
-    /// ~/.zshrc, then uses zsh's `print -z` to pre-fill the next interactive
-    /// prompt with commandString without executing it.
+    /// .zshrc, then uses zsh's `print -z` to pre-fill the next interactive
+    /// prompt with commandString without executing it. ZDOTDIR is unset
+    /// first so it doesn't leak into the session: otherwise every nested
+    /// `zsh` re-runs this file (re-staging the command), and rc files that
+    /// write to `${ZDOTDIR:-$HOME}` (e.g. compinit's .zcompdump) write into
+    /// the temp dir. Users who set their own ZDOTDIR in ~/.zshenv get their
+    /// .zshrc from there.
     private static func makeZdotdirStaging(commandString: String) throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("KubeBar-\(UUID().uuidString)", isDirectory: true)
@@ -151,8 +152,9 @@ enum TerminalLauncher {
 
         let escapedCommand = shellSingleQuoteEscape(commandString)
         let rcContents = """
+        unset ZDOTDIR
         [ -f "$HOME/.zshenv" ] && source "$HOME/.zshenv"
-        [ -f "$HOME/.zshrc" ] && source "$HOME/.zshrc"
+        [ -f "${ZDOTDIR:-$HOME}/.zshrc" ] && source "${ZDOTDIR:-$HOME}/.zshrc"
         clear
         print -z '\(escapedCommand)'
         """
