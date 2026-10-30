@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var configStore: ConfigStore
@@ -21,6 +23,8 @@ struct SettingsView: View {
     @State private var newTerminalName = ""
     @State private var launchAtLogin = false
     @State private var historyError: String?
+    /// Result of the last utilities import/export, shown under the list.
+    @State private var transferStatus: (text: String, isError: Bool)?
     @State private var language = AppLanguage.current
 
     var body: some View {
@@ -99,8 +103,27 @@ struct SettingsView: View {
                 }
             }
 
-            Button("Add utility") {
-                utilitySheet = .add
+            if let transferStatus {
+                Text(transferStatus.text)
+                    .font(.caption)
+                    .foregroundStyle(transferStatus.isError ? Color.red : Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Button("Add utility") {
+                    utilitySheet = .add
+                }
+                Spacer()
+                Button("Import…") {
+                    importUtilities()
+                }
+                .help("Load utility templates from a JSON file; utilities with the same name are replaced")
+                Button("Export…") {
+                    exportUtilities()
+                }
+                .disabled(configStore.utilities.isEmpty)
+                .help("Save the utility templates to a JSON file")
             }
         }
         .sheet(item: $utilitySheet) { sheet in
@@ -128,6 +151,55 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func exportUtilities() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "KubeBar-utilities.json"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        do {
+            try encoder.encode(configStore.utilities).write(to: url, options: .atomic)
+            transferStatus = nil
+        } catch {
+            transferStatus = (String(localized: "Couldn't export utilities: \(error.localizedDescription)"), true)
+        }
+    }
+
+    /// Merges utilities from a file written by `exportUtilities`: a utility
+    /// with an existing name replaces it in place (names are unique ids),
+    /// new ones are appended.
+    private func importUtilities() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let imported: [Utility]
+        do {
+            imported = try JSONDecoder().decode([Utility].self, from: Data(contentsOf: url))
+        } catch {
+            transferStatus = (String(localized: "Couldn't import utilities: the file isn't a KubeBar utilities export."), true)
+            return
+        }
+
+        var added = 0
+        var replaced = 0
+        for utility in imported where !utility.name.isEmpty {
+            if let index = configStore.utilities.firstIndex(where: { $0.name == utility.name }) {
+                configStore.utilities[index] = utility
+                replaced += 1
+            } else {
+                configStore.utilities.append(utility)
+                added += 1
+            }
+        }
+        configStore.save()
+        transferStatus = (String(localized: "Imported utilities: \(added) added, \(replaced) replaced."), false)
     }
 
     private func moveUtility(from: Int, to: Int) {

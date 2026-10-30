@@ -75,3 +75,11 @@
 "System" = "Системный";
 "The language changes after KubeBar restarts." = "Язык сменится после перезапуска KubeBar.";
 "Restart now" = "Перезапустить";
+"Copy command" = "Скопировать команду";
+"Export…" = "Экспорт…";
+"Save the utility templates to a JSON file" = "Сохранить шаблоны утилит в JSON-файл";
+"Couldn't export utilities: %@" = "Не удалось экспортировать утилиты: %@";
+"Import…" = "Импорт…";
+"Load utility templates from a JSON file; utilities with the same name are replaced" = "Загрузить шаблоны утилит из JSON-файла; утилиты с тем же именем заменяются";
+"Couldn't import utilities: the file isn't a KubeBar utilities export." = "Не удалось импортировать утилиты: файл не является экспортом утилит KubeBar.";
+"Imported utilities: %lld added, %lld replaced." = "Импорт утилит: добавлено — %lld, заменено — %lld.";

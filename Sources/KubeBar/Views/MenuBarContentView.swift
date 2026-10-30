@@ -37,6 +37,9 @@ struct MenuBarContentView: View {
     /// changes so a stale edit can't leak into a different command.
     @State private var editedCommand: String?
 
+    /// Briefly swaps the copy icon for a checkmark after copying.
+    @State private var didCopyCommand = false
+
     /// The popover's window, used to shrink it when the content gets shorter.
     @State private var hostWindow: NSWindow?
     @State private var contentHeight: CGFloat = 0
@@ -203,6 +206,12 @@ struct MenuBarContentView: View {
                             .buttonStyle(.borderless)
                             .help("Restore the command from the utility template")
                         }
+                        Button(action: copyCommand) {
+                            Image(systemName: didCopyCommand ? "checkmark" : "doc.on.doc")
+                        }
+                        .font(.caption)
+                        .buttonStyle(.borderless)
+                        .help("Copy command")
                     }
                     TextField("", text: commandPreviewBinding, axis: .vertical)
                         .textFieldStyle(.plain)
@@ -424,6 +433,19 @@ struct MenuBarContentView: View {
 
     private func kubectlExecutable() -> String {
         configStore.utilities.first(where: { $0.name == "kubectl" })?.executable ?? "kubectl"
+    }
+
+    /// Copies the command exactly as shown in the preview, including a
+    /// one-off edit.
+    private func copyCommand() {
+        guard let command = editedCommand ?? commandPreview else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+        didCopyCommand = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            didCopyCommand = false
+        }
     }
 
     private func launch(mode: TerminalLaunchMode) {
